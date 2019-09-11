@@ -72,28 +72,31 @@ tidy_data_sparse <- tidy_data %>%
 library(furrr) # for parallel processing
 plan(multiprocess)
 
-many_models <- tibble(K = c(5, 10, 15, 20, 25, 30, 35, 40, 45, 50)) %>%
-  mutate(topic_model = future_map(K, ~stm(tidy_data_sparse, K = .,
-                                          verbose = FALSE)))
-
-saveRDS(many_models, 'many_models.RDS')
+## see many_models object in Google Drive
+# many_models <- tibble(K = c(5, 10, 15, 20, 25, 30, 35, 40, 45, 50)) %>%
+#   mutate(topic_model = future_map(K, ~stm(tidy_data_sparse, K = .,
+#                                           verbose = FALSE)))
+# 
+# saveRDS(many_models, 'many_models.RDS')
 
 # evaluation the models
-heldout <- make.heldout(tidy_data_sparse)
 
-k_result <- many_models %>%
-  mutate(exclusivity = map(topic_model, exclusivity),
-         semantic_coherence = map(topic_model, semanticCoherence, tidy_data_sparse),
-         eval_heldout = map(topic_model, eval.heldout, heldout$missing),
-         residual = map(topic_model, checkResiduals, tidy_data_sparse),
-         bound =  map_dbl(topic_model, function(x) max(x$convergence$bound)),
-         lfact = map_dbl(topic_model, function(x) lfactorial(x$settings$dim$K)),
-         lbound = bound + lfact,
-         iterations = map_dbl(topic_model, function(x) length(x$convergence$bound)))
-
-saveRDS(k_result, 'k_result.RDS')
-
-beepr::beep(2)
+## see k_result object in Google Drive
+# heldout <- make.heldout(tidy_data_sparse)
+# 
+# k_result <- many_models %>%
+#   mutate(exclusivity = map(topic_model, exclusivity),
+#          semantic_coherence = map(topic_model, semanticCoherence, tidy_data_sparse),
+#          eval_heldout = map(topic_model, eval.heldout, heldout$missing),
+#          residual = map(topic_model, checkResiduals, tidy_data_sparse),
+#          bound =  map_dbl(topic_model, function(x) max(x$convergence$bound)),
+#          lfact = map_dbl(topic_model, function(x) lfactorial(x$settings$dim$K)),
+#          lbound = bound + lfact,
+#          iterations = map_dbl(topic_model, function(x) length(x$convergence$bound)))
+# 
+# saveRDS(k_result, 'k_result.RDS')
+# 
+# beepr::beep(2)
 
 k_result %>%
   transmute(K,
