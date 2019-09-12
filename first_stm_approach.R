@@ -10,7 +10,7 @@ library(scales)
 
 set.seed(123)
 
-# loading data
+# loading data ------------------------------------------------------------
 data <- readRDS("pubmed_data_2019-08-20.RDS") %>% 
   clean_names()
 
@@ -20,7 +20,8 @@ colnames(data)
 data <- data %>% 
   filter(year_pub >= 2009)
 
-# merging all relevant text to new variable
+
+# merging all relevant text to new variable -------------------------------
 data$pmc_citation_count <- as.integer(data$pmc_citation_count)
 
 data <- data %>% 
@@ -31,7 +32,8 @@ data <- data %>%
   select(journal, authors, text, year_pub, cit_per_year) %>% 
   ungroup()
 
-# checking tidiness of text data and cleaning with textclean package
+
+# checking tidiness of text data and cleaning with textclean packa --------
 data$text %>% 
   str_extract_all(boundary("character")) %>% 
   unlist() %>% 
@@ -43,12 +45,14 @@ data <- data %>%
          rowID = row_number()) 
 
 
-# tokenize text, stopwords, and stemming
+
+# tokenize text, stopwords, and stemming ----------------------------------
 # removing resistance related words as they were already part of search strategy
 # stemming not required (reference: http://www.cs.cornell.edu/~xanda/winlp2017.pdf) but used in this case as first models showed many similar words among top words (e.g. infection and infections)
 resistance_stopwords <- tibble(word = c("resistance", "resistances", "resistant",
                                         "antimicrobial", "antimicrobials",
-                                        "antibacterial", "antbacterials",
+                                        # "antibacterial", "antbacterials", # not yet included 12-09-2019
+                                        # "p", "ci", "1", "2gml", # not yet included 12-09-2019
                                         "antibiotic", "antibiotics",
                                         "susceptible", "susceptibility",
                                         "antifungal", "antifungals"))
@@ -68,7 +72,8 @@ tidy_data_sparse <- tidy_data %>%
   count(rowID, word) %>%
   cast_sparse(rowID, word, n)
 
-# trying out several model for K 5 to 50
+
+# modeling for several K --------------------------------------------------
 library(furrr) # for parallel processing
 plan(multiprocess)
 
@@ -79,7 +84,8 @@ plan(multiprocess)
 # 
 # saveRDS(many_models, 'many_models.RDS')
 
-# evaluation the models
+
+# evaluation the models for all K -----------------------------------------
 
 ## see k_result object in Google Drive
 # heldout <- make.heldout(tidy_data_sparse)
@@ -98,6 +104,8 @@ plan(multiprocess)
 # 
 # beepr::beep(2)
 
+
+# model diagnostics by number of topics -----------------------------------
 k_result %>%
   transmute(K,
             `Lower bound` = lbound,
@@ -114,21 +122,23 @@ k_result %>%
 
 k_result %>%
   select(K, exclusivity, semantic_coherence) %>%
-  filter(K %in% c(40, 45, 50)) %>%
+  filter(K %in% c(25, 40, 45, 50)) %>%
   unnest() %>%
   mutate(K = as.factor(K)) %>%
   ggplot(aes(semantic_coherence, exclusivity, color = K)) +
   geom_point(size = 2, alpha = 0.7) +
+  geom_mark_ellipse() +
   labs(x = "Semantic coherence",
        y = "Exclusivity",
        title = "Comparing exclusivity and semantic coherence",
        subtitle = "Models with fewer topics have higher semantic coherence for more topics, but lower exclusivity")
 
 
-# based on plots above the "best" number of topic would be around 20 to 30 (chosing 20 first)
+
+# investigating different topic models by filtering for K ------------------------------------
 
 topic_model <- k_result %>% 
-  filter(K == 45) %>% 
+  filter(K == 45) %>% # selecting model by K
   pull(topic_model) %>% 
   .[[1]]
 
@@ -136,6 +146,7 @@ topic_model #A topic model with 25 topics, 36598 documents and a 131872 word dic
 
 td_beta <- tidy(topic_model)
 
+# word probability for each topic
 td_beta %>%
   group_by(topic) %>%
   top_n(10, beta) %>%
@@ -172,8 +183,9 @@ gamma_terms <- td_gamma %>%
   mutate(topic = paste0("Topic ", topic),
          topic = reorder(topic, gamma))
 
+# top 20 topics by prevalence in the PubMed corpus
 gamma_terms %>%
-  top_n(20, gamma) %>%
+  top_n(20, gamma) %>% # select top n
   ggplot(aes(topic, gamma, label = terms, fill = topic)) +
   geom_col(show.legend = FALSE) +
   geom_text(hjust = 0, nudge_y = 0.0005, size = 3) +
@@ -188,5 +200,6 @@ gamma_terms %>%
        title = "Top 20 topics by prevalence in the PubMed corpus",
        subtitle = "With the top words that contribute to each topic")
 
+# full list of topics
 gamma_terms %>%
   select(topic, gamma, terms)
