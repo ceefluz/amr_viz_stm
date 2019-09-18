@@ -6,6 +6,7 @@ library(textclean)
 library(tm)
 library(stm)
 library(ggthemes)
+library(ggforce)
 library(scales)
 
 set.seed(123)
@@ -29,15 +30,15 @@ data <- data %>%
          cit_per_year = pmc_citation_count / (2019 - year_pub + 1)) %>%  # per year but not 0
   rowwise() %>% 
   mutate(cit_per_year = if_else(max(cit_per_year) >= 20, 20, cit_per_year)) %>% # citations per year capped at 20 max (see Bohr % Dunlap)
-  select(journal, authors, text, year_pub, cit_per_year) %>% 
+  select(journal, authors, text, year_pub, cit_per_year, pmid) %>% 
   ungroup()
 
 
 # checking tidiness of text data and cleaning with textclean packa --------
-data$text %>% 
-  str_extract_all(boundary("character")) %>% 
-  unlist() %>% 
-  unique() # will print all characters
+# data$text %>% 
+#   str_extract_all(boundary("character")) %>% 
+#   unlist() %>% 
+#   unique() # will print all characters
 
 data <- data %>% 
   mutate(text = strip(text), # strip anything but letters, numbers, spaces, and apostrophes
@@ -51,8 +52,8 @@ data <- data %>%
 # stemming not required (reference: http://www.cs.cornell.edu/~xanda/winlp2017.pdf) but used in this case as first models showed many similar words among top words (e.g. infection and infections)
 resistance_stopwords <- tibble(word = c("resistance", "resistances", "resistant",
                                         "antimicrobial", "antimicrobials",
-                                        # "antibacterial", "antbacterials", # not yet included 12-09-2019
-                                        # "p", "ci", "1", "2gml", # not yet included 12-09-2019
+                                        "antibacterial", "antbacterials", # not yet included 12-09-2019
+                                        "p", "ci", "1", "2gml", # not yet included 12-09-2019
                                         "antibiotic", "antibiotics",
                                         "susceptible", "susceptibility",
                                         "antifungal", "antifungals"))
@@ -72,25 +73,42 @@ tidy_data_sparse <- tidy_data %>%
   count(rowID, word) %>%
   cast_sparse(rowID, word, n)
 
+saveRDS(tidy_data_sparse, "tidy_data_sparse.RDS")
 
 # modeling for several K --------------------------------------------------
 library(furrr) # for parallel processing
 plan(multiprocess)
 
 ## see many_models object in Google Drive
-# many_models <- tibble(K = c(5, 10, 15, 20, 25, 30, 35, 40, 45, 50)) %>%
-#   mutate(topic_model = future_map(K, ~stm(tidy_data_sparse, K = .,
+many_models <- tibble(K = c(5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55)) %>%
+  mutate(topic_model = future_map(K, ~stm(tidy_data_sparse, K = .,
+                                          verbose = FALSE)))
+beepr::beep(2)
+
+# many_models_prev <- tibble(K = c(5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55)) %>%
+#   mutate(topic_model = future_map(K, ~stm(tidy_data_sparse, K = ., prevalence = ~year_pub,
 #                                           verbose = FALSE)))
-# 
-# saveRDS(many_models, 'many_models.RDS')
+
+saveRDS(many_models, 'many_models.RDS')
+# saveRDS(many_models_prev, 'many_models_prev.RDS')
 
 
 # evaluation the models for all K -----------------------------------------
 
 ## see k_result object in Google Drive
-# heldout <- make.heldout(tidy_data_sparse)
-# 
-# k_result <- many_models %>%
+heldout <- make.heldout(tidy_data_sparse)
+
+k_result <- many_models %>%
+  mutate(exclusivity = map(topic_model, exclusivity),
+         semantic_coherence = map(topic_model, semanticCoherence, tidy_data_sparse),
+         eval_heldout = map(topic_model, eval.heldout, heldout$missing),
+         residual = map(topic_model, checkResiduals, tidy_data_sparse),
+         bound =  map_dbl(topic_model, function(x) max(x$convergence$bound)),
+         lfact = map_dbl(topic_model, function(x) lfactorial(x$settings$dim$K)),
+         lbound = bound + lfact,
+         iterations = map_dbl(topic_model, function(x) length(x$convergence$bound)))
+
+# k_result_prev <- many_models_prev %>%
 #   mutate(exclusivity = map(topic_model, exclusivity),
 #          semantic_coherence = map(topic_model, semanticCoherence, tidy_data_sparse),
 #          eval_heldout = map(topic_model, eval.heldout, heldout$missing),
@@ -99,10 +117,11 @@ plan(multiprocess)
 #          lfact = map_dbl(topic_model, function(x) lfactorial(x$settings$dim$K)),
 #          lbound = bound + lfact,
 #          iterations = map_dbl(topic_model, function(x) length(x$convergence$bound)))
-# 
-# saveRDS(k_result, 'k_result.RDS')
-# 
-# beepr::beep(2)
+
+saveRDS(k_result, 'k_result.RDS')
+# saveRDS(k_result_prev, 'k_result_prev.RDS')
+
+beepr::beep(8)
 
 
 # model diagnostics by number of topics -----------------------------------
@@ -138,7 +157,7 @@ k_result %>%
 # investigating different topic models by filtering for K ------------------------------------
 
 topic_model <- k_result %>% 
-  filter(K == 45) %>% # selecting model by K
+  filter(K == 40) %>% # selecting model by K
   pull(topic_model) %>% 
   .[[1]]
 
