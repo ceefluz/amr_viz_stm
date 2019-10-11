@@ -227,3 +227,5 @@ pubmed_to_sjr_complete <- pubmed_to_sjr_complete %>%
     TRUE ~ sjr_journal
   )) %>% 
   distinct()
+
+saveRDS(pubmed_to_sjr_complete, "pubmed_to_sjr_complete.RDS")
