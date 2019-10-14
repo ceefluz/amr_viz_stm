@@ -22,6 +22,8 @@ sjrdata <- scimago_raw %>%
   clean_names() %>% 
   rename(sjr_journal = title)
   
+saveRDS(sjrdata, "sjrdata.RDS")
+
 # later in the analysis this error showed up for special character (Ä); correcting this here:
 sjrdata$sjr_journal[which(sjrdata$sjr_journal == "Deutsches ?rzteblatt international")] <- "Deutsches Ärzteblatt international"
 
