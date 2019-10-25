@@ -86,7 +86,7 @@ pub_type_list <- tibble(type = unlist(pubmed_data_extract$publication_type)) %>%
 
 unique(pub_type_list$type) %>% sort()
 
-exclude_type <- tibble(type = c("Address", "Autobiography", "Bibliography", "Biography", "Case Reports", "Comment", 
+exclude_type <- tibble(type = c("Address", "Autobiography", "Bibliography", "Biography", "Comment", 
                                 "Corrected and Republished Article", # to be discussed
                                 "Directory", "Editorial", "Festschrift", "Interactive Tutorial", "Interview", "Lecture",
                                 "Legal Case", "Letter", "News", "Newspaper Article", "Patient Education Handout", 
@@ -137,6 +137,8 @@ citations <- citations %>%
   anti_join(citations_dupes) %>% # removing duplicates
   bind_rows(citations_dupes_corrected) # adding corrected citations
 
+saveRDS(citations, "citations_2019-10-18.RDS")
+
 # same needs to be done within pubmed_data_extract - keeping first PMID only
 pubmed_data_extract <- pubmed_data_extract %>% 
   group_by(title, journal, year) %>% 
@@ -173,7 +175,7 @@ pubmed_data_extract_model <- pubmed_data_extract %>%
   mutate(text = paste(title, abstract, sep = " ")) %>% 
   select(year, pmid, text, journal, sjr_journal, h_index, cites_doc_2years, rank)
   
-saveRDS(pubmed_data_extract_model, "pubmed_data_extract_2019-10-14.RDS")
+saveRDS(pubmed_data_extract_model, "pubmed_data_extract_2019-10-18.RDS")
 
 # affiliations <- pubmed_data_extract %>% 
 #   select(pmid, affiliation) %>% 
@@ -210,11 +212,11 @@ library(metagear)
 
 phases <- c(str_glue("START_PHASE: All records since 1999: {n_years}"), 
             str_glue("After exclusion of missing title or abstract: {n_missing}"),
-            str_glue("EXCLUDE_PHASE: {n_years - n_missing} records removed"),
+            str_glue("EXCLUDE_PHASE: Missing title/abstract:{n_years - n_missing} records removed"),
             str_glue("After removing reviews etc.: {n_types}"),
-            str_glue("EXCLUDE_PHASE: {n_missing - n_types} records removed"),
+            str_glue("EXCLUDE_PHASE: Article type exclusions: {n_missing - n_types} records removed"),
             str_glue("Final set of records for topic modelling: {n_dupes}"),
-            str_glue("EXCLUDE_PHASE: {n_types - n_dupes} records removed"))
+            str_glue("EXCLUDE_PHASE: Duplicate removals: {n_types - n_dupes} records removed"))
 
 # PRISMA plot with custom layout
 thePlot <- plot_PRISMA(phases, design = "grey")
