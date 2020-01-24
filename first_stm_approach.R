@@ -24,6 +24,8 @@ data <- data %>%
   mutate(cit_per_year = if_else(max(cit_per_year) >= 20, 20, cit_per_year)) %>% # citations per year capped at 20 max (see Bohr & Dunlap)
   ungroup()
 
+
+# checking tidiness of text data and cleaning with textclean packa --------
 test <- data %>% 
   mutate(text = strip(text), # strip anything but letters, numbers, spaces, and apostrophes
          text = replace_non_ascii(text), #remove non-ascii characters
@@ -44,6 +46,13 @@ add_stopwords <- read_tsv("stopwords.txt", col_names = "word")
 
 tidy_data1 <- tidy_data %>% 
   anti_join(add_stopwords)
+
+# check if stopwords worked
+# tidy_data %>% 
+#   select(word) %>% 
+#   filter(str_detect(word, "antimi")) %>% 
+#   count(word) %>% 
+#   arrange(-n)
 
 tidy_data_sparse <- tidy_data %>%
   count(rowID, word) %>%
