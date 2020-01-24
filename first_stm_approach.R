@@ -3,6 +3,7 @@ library(tidyverse)
 library(janitor)
 library(tidytext)
 library(textclean)
+library(qdapRegex)
 library(tm)
 library(stm)
 library(ggthemes)
@@ -12,62 +13,37 @@ library(scales)
 set.seed(123)
 
 # loading data ------------------------------------------------------------
-data <- readRDS("pubmed_data_2019-08-20.RDS") %>% 
+data <- readRDS("ris_data_peregrine.RDS") %>% 
   clean_names()
 
-colnames(data)
-
-# last ten years only
-data <- data %>% 
-  filter(year_pub >= 2009)
-
-
 # merging all relevant text to new variable -------------------------------
-data$pmc_citation_count <- as.integer(data$pmc_citation_count)
-
 data <- data %>% 
   mutate(text = paste(title, abstract),
-         cit_per_year = pmc_citation_count / (2019 - year_pub + 1)) %>%  # per year but not 0
+         cit_per_year = as.integer(cit_count) / (2019 - year + 1)) %>%  # per year but not 0
   rowwise() %>% 
-  mutate(cit_per_year = if_else(max(cit_per_year) >= 20, 20, cit_per_year)) %>% # citations per year capped at 20 max (see Bohr % Dunlap)
-  select(journal, authors, text, year_pub, cit_per_year, pmid) %>% 
+  mutate(cit_per_year = if_else(max(cit_per_year) >= 20, 20, cit_per_year)) %>% # citations per year capped at 20 max (see Bohr & Dunlap)
   ungroup()
 
-
-# checking tidiness of text data and cleaning with textclean packa --------
-# data$text %>% 
-#   str_extract_all(boundary("character")) %>% 
-#   unlist() %>% 
-#   unique() # will print all characters
-
-data <- data %>% 
+test <- data %>% 
   mutate(text = strip(text), # strip anything but letters, numbers, spaces, and apostrophes
          text = replace_non_ascii(text), #remove non-ascii characters
+         text = rm_non_words(text),
+         text = rm_nchar_words(text, 1),
          rowID = row_number()) 
 
-
-
 # tokenize text, stopwords, and stemming ----------------------------------
-# removing resistance related words as they were already part of search strategy
-# stemming not required (reference: http://www.cs.cornell.edu/~xanda/winlp2017.pdf) but used in this case as first models showed many similar words among top words (e.g. infection and infections)
-resistance_stopwords <- tibble(word = c("resistance", "resistances", "resistant",
-                                        "antimicrobial", "antimicrobials",
-                                        "antibacterial", "antbacterials", # not yet included 12-09-2019
-                                        "p", "ci", "1", "2gml", # not yet included 12-09-2019
-                                        "antibiotic", "antibiotics",
-                                        "susceptible", "susceptibility",
-                                        "antifungal", "antifungals"))
-
-tidy_data <- data %>% 
+tidy_data <- test %>% 
   unnest_tokens(word, text) %>%
   anti_join(get_stopwords(language = "en")) %>% 
   anti_join(get_stopwords(language = "es")) %>% # removing stopwords from additional language as they showed up as seperate topic in test modeling
   anti_join(get_stopwords(language = "fr")) %>% 
   anti_join(get_stopwords(language = "de")) %>% 
-  anti_join(resistance_stopwords) %>% 
   mutate(word = stemDocument(word))
-  
 
+add_stopwords <- read_tsv("stopwords.txt", col_names = "word")
+
+tidy_data1 <- tidy_data %>% 
+  anti_join(add_stopwords)
 
 tidy_data_sparse <- tidy_data %>%
   count(rowID, word) %>%
@@ -157,7 +133,7 @@ k_result %>%
 # investigating different topic models by filtering for K ------------------------------------
 
 topic_model <- k_result %>% 
-  filter(K == 40) %>% # selecting model by K
+  filter(K == 125) %>% # selecting model by K
   pull(topic_model) %>% 
   .[[1]]
 
@@ -187,12 +163,21 @@ td_gamma <- tidy(topic_model, matrix = "gamma",
 top_terms <- td_beta %>%
   arrange(beta) %>%
   group_by(topic) %>%
-  top_n(7, beta) %>%
+  top_n(10, beta) %>%
   arrange(-beta) %>%
   select(topic, term) %>%
   summarise(terms = list(term)) %>%
   mutate(terms = map(terms, paste, collapse = ", ")) %>% 
   unnest()
+
+top_terms %>% 
+  rowwise() %>% 
+  mutate(topic_titles_1 = data$text[which(data$pmid %in% unlist(findThoughts(topic_model, texts=data$pmid, n=3, topics=topic)$doc))][1],
+         topic_titles_2 = data$text[which(data$pmid %in% unlist(findThoughts(topic_model, texts=data$pmid, n=3, topics=topic)$doc))][2],
+         topic_titles_3 = data$text[which(data$pmid %in% unlist(findThoughts(topic_model, texts=data$pmid, n=3, topics=topic)$doc))][3],
+         pmid = paste0(data$pmid[which(data$pmid %in% unlist(findThoughts(topic_model, texts=data$pmid, n=3, topics=topic)$doc))], collapse = ", ")) %>% 
+  write_excel_csv2("top_terms_75_wo_stop-11-11.csv")
+
 
 gamma_terms <- td_gamma %>%
   group_by(topic) %>%
